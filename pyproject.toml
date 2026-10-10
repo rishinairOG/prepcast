@@ -1,0 +1,32 @@
+[project]
+name = "prepcast"
+version = "0.1.0"
+description = "Demand & prep forecaster for a synthetic Riyadh casual-dining restaurant, with a leakage-safe backtest and a prep/waste simulation."
+readme = "README.md"
+authors = [
+    { name = "rishinairOG", email = "greatlordrishi@gmail.com" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    "pandas>=2.2",
+    "numpy>=1.26",
+    "lightgbm>=4.3",
+    "hijridate>=2.3",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.6",
+]
+
+[project.scripts]
+prepcast = "prepcast.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.12.5,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
