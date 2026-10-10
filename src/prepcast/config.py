@@ -91,6 +91,16 @@ class NoiseConfig:
 
 
 @dataclass(frozen=True)
+class SimConfig:
+    """Prep rules and kitchen simulation. ASSUMPTION unless noted."""
+
+    usual_buffer: float = 0.10                 # "last week + a bit extra" habit
+    buffer_sensitivity: tuple = (0.0, 0.10, 0.20)
+    min_batch: int = 0                         # minimum portions per prep batch (0 = off)
+    slider_levels: tuple = tuple(round(0.50 + 0.05 * i, 2) for i in range(10))  # P50..P95
+
+
+@dataclass(frozen=True)
 class PrepCastConfig:
     seed: int = 20261009
     dates: DateRangeConfig = field(default_factory=DateRangeConfig)
@@ -98,6 +108,7 @@ class PrepCastConfig:
     seasonal: SeasonalConfig = field(default_factory=SeasonalConfig)
     censoring: CensoringConfig = field(default_factory=CensoringConfig)
     noise: NoiseConfig = field(default_factory=NoiseConfig)
+    sim: SimConfig = field(default_factory=SimConfig)
 
 
 DEFAULT_CONFIG = PrepCastConfig()

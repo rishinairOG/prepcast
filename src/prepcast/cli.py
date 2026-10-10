@@ -40,6 +40,17 @@ def cmd_backtest(args: argparse.Namespace) -> None:
                           compare_censoring=not args.quick, out_dir=DATA_DIR))
 
 
+def cmd_simulate(args: argparse.Namespace) -> None:
+    from prepcast.report import savings_report
+
+    path = DATA_DIR / "backtest_dishes.csv"
+    if not path.exists():
+        raise SystemExit("No backtest predictions yet - run `prepcast backtest` first.")
+    preds = pd.read_csv(path, parse_dates=["date", "origin"])
+    latent = pd.read_csv(DATA_DIR / "_truth_latent_demand.csv", parse_dates=["date"])
+    print(savings_report(preds, latent, out_dir=DATA_DIR))
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="prepcast")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -51,6 +62,9 @@ def main(argv: list[str] | None = None) -> None:
     p_bt.add_argument("--folds", type=int, default=52)
     p_bt.add_argument("--quick", action="store_true", help="skip the censoring comparison run")
     p_bt.set_defaults(func=cmd_backtest)
+
+    p_sim = sub.add_parser("simulate", help="Prep/waste simulation on the backtest weeks")
+    p_sim.set_defaults(func=cmd_simulate)
 
     args = parser.parse_args(argv)
     args.func(args)

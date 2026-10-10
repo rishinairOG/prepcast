@@ -95,3 +95,57 @@ def _fmt_pivot(piv: pd.DataFrame) -> str:
         if c != "n":
             d[c] = d[c].map(lambda v: f"{v * 100:.1f}%")
     return d.to_string()
+
+
+def savings_report(preds: pd.DataFrame, latent: pd.DataFrame, out_dir: Path | None = None) -> str:
+    from prepcast.simulate import simulate_all
+
+    scored = preds[~preds["is_warmup"]].copy()
+    summary, frames = simulate_all(scored, latent)
+    if out_dir is not None:
+        summary.to_csv(Path(out_dir) / "sim_summary.csv", index=False)
+        frames["PrepCast"].to_csv(Path(out_dir) / "sim_prepcast_daily.csv", index=False)
+        frames["Usual (+10%)"].to_csv(Path(out_dir) / "sim_usual_daily.csv", index=False)
+
+    s = summary.set_index("method")
+    main_rows = ["Usual (+10%)", "4-wk avg (+10%)", "PrepCast"]
+    lines = [(f"SIMULATION: {scored['date'].min().date()} -> {scored['date'].max().date()}, "
+             f"{scored['series_id'].nunique()} dishes, replayed against hidden true demand."),
+             ("All money figures annualised to 52 weeks, SAR. Waste valued at food cost; "
+             "stockouts valued at lost gross margin.\n")]
+
+    def table(rows):
+        cols = ["waste_kg", "waste_sar", "stockout_portions", "lost_margin_sar", "net_cost_sar",
+                "fill_rate", "waste_rate"]
+        t = s.loc[rows, cols].copy()
+        fm = {"waste_kg": "{:,.0f}".format, "waste_sar": "{:,.0f}".format,
+              "stockout_portions": "{:,.0f}".format, "lost_margin_sar": "{:,.0f}".format,
+              "net_cost_sar": "{:,.0f}".format, "fill_rate": lambda v: f"{v*100:.1f}%",
+              "waste_rate": lambda v: f"{v*100:.1f}%"}
+        return t.to_string(formatters=fm)
+
+    lines.append("== HEADLINE ==")
+    lines.append(table(main_rows))
+    u, p = s.loc["Usual (+10%)"], s.loc["PrepCast"]
+    lines.append(
+        f"\nPrepCast vs usual method: waste {u.waste_sar - p.waste_sar:+,.0f} SAR saved "
+        f"({u.waste_kg - p.waste_kg:,.0f} kg less binned), stockout portions "
+        f"{u.stockout_portions - p.stockout_portions:+,.0f} avoided, "
+        f"net {u.net_cost_sar - p.net_cost_sar:+,.0f} SAR/year better.")
+
+    lines.append("\n== SENSITIVITY: usual-method buffer ==")
+    lines.append(table([r for r in s.index if r.startswith(("Usual", "4-wk"))]))
+
+    lines.append("\n== BUFFER SLIDER (one service level for every dish) ==")
+    lines.append(table([r for r in s.index if r.startswith("slider_")]))
+
+    pc, us = frames["PrepCast"], frames["Usual (+10%)"]
+    by = pd.DataFrame({
+        "net_prepcast": pc.groupby("series_id")[["waste_sar", "lost_margin_sar"]].sum().sum(axis=1),
+        "net_usual": us.groupby("series_id")[["waste_sar", "lost_margin_sar"]].sum().sum(axis=1),
+    })
+    by["winner"] = (by["net_prepcast"] < by["net_usual"]).map({True: "PrepCast", False: "USUAL"})
+    lines.append(f"\nPer-dish net cost: PrepCast better on {(by['winner'] == 'PrepCast').sum()}"
+                 f"/{len(by)} dishes. Usual method wins on: "
+                 f"{', '.join(by.index[by['winner'] == 'USUAL']) or 'none'}")
+    return "\n".join(lines)
