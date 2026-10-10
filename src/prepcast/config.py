@@ -78,9 +78,16 @@ class CensoringConfig:
 
 @dataclass(frozen=True)
 class NoiseConfig:
-    """Negative-binomial dispersion for daily dish counts (overdispersed, integer, >=0)."""
+    """Negative-binomial dispersion (overdispersed, integer, >=0). Lower r => more noise.
 
-    dispersion_r: float = 8.0  # lower r => more overdispersion
+    covers_r=60 gives ~14% day-to-day CV on ~270 covers after all known effects - in the
+    10-15% band typical of an established casual-dining venue (ASSUMPTION). dish_r=20 adds
+    menu-mix noise on top of the Poisson-like count noise of a 5-20 units/day item.
+    v0 used r=8 for both, which made even a perfect oracle score 27% WAPE on covers.
+    """
+
+    covers_r: float = 60.0
+    dish_r: float = 20.0
 
 
 @dataclass(frozen=True)

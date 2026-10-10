@@ -1,0 +1,97 @@
+"""Builds the human-readable backtest report and saves the raw prediction tables."""
+from __future__ import annotations
+
+from pathlib import Path
+
+import pandas as pd
+
+from prepcast import metrics
+from prepcast.backtest import run_backtest
+from prepcast.features import (
+    COVERS_FEATURES,
+    DISH_FEATURES,
+    build_covers_panel,
+    build_dish_panel,
+    calendar_features,
+)
+
+METHODS = {"PrepCast (LightGBM)": "yhat", "Last week same day": "base_lastweek",
+           "4-wk same-weekday avg": "base_4wk", "Flat 28-day mean": "base_flat28"}
+
+
+def _fmt(df: pd.DataFrame) -> str:
+    d = df.copy()
+    for c in ("WAPE", "bias", "MAPE_nonzero", "cov80"):
+        if c in d:
+            d[c] = d[c].map(lambda v: "" if pd.isna(v) else f"{v * 100:5.1f}%")
+    return d.to_string(index=False)
+
+
+def _scored(preds: pd.DataFrame, calendar: pd.DataFrame) -> pd.DataFrame:
+    s = preds[~preds["is_warmup"] & preds["is_active"].astype(bool)].copy()
+    cal = calendar_features(calendar)
+    s = s.merge(cal, on="date", how="left")
+    s["segment"] = metrics.segment_of(s)
+    return s
+
+
+def backtest_report(calendar, covers, sales, n_folds: int = 52, compare_censoring: bool = True,
+                    out_dir: Path | None = None) -> str:
+    lines = []
+    dp = build_dish_panel(sales, calendar)
+    cp = build_covers_panel(covers, calendar)
+
+    dish = run_backtest(dp, DISH_FEATURES, censor_mode="downweight", n_folds=n_folds)
+    cov = run_backtest(cp, COVERS_FEATURES, censor_mode="none", n_folds=n_folds)
+    if out_dir is not None:
+        dish.to_csv(Path(out_dir) / "backtest_dishes.csv", index=False)
+        cov.to_csv(Path(out_dir) / "backtest_covers.csv", index=False)
+
+    ds, cs = _scored(dish, calendar), _scored(cov, calendar)
+    lines.append(f"BACKTEST: {n_folds} weekly origins, "
+                 f"{ds['date'].min().date()} -> {ds['date'].max().date()}, horizon 1-7 days")
+    lines.append(f"Dish-days scored: {len(ds):,} (active dishes only)\n")
+
+    lines.append("== DAILY COVERS ==")
+    lines.append(_fmt(metrics.summary_table(cs, METHODS)))
+    lines.append("\n== DISH UNITS, ALL DAYS ==")
+    lines.append(_fmt(metrics.summary_table(ds, METHODS)))
+    lines.append("\n== DISH UNITS BY DAY TYPE (WAPE) ==")
+    seg = metrics.summary_table(ds, METHODS, by="segment")
+    piv = seg.pivot(index="segment", columns="method", values="WAPE")[list(METHODS)]
+    n = seg.groupby("segment")["n"].first()
+    piv.insert(0, "n", n)
+    lines.append(_fmt_pivot(piv))
+
+    lines.append("\n== PER DISH (WAPE), model vs best baseline ==")
+    rows = []
+    for sid, g in ds.groupby("series_id"):
+        m = metrics.wape(g["y"], g["yhat"])
+        b = min(metrics.wape(g["y"], g["base_lastweek"]), metrics.wape(g["y"], g["base_4wk"]))
+        rows.append({"dish": sid, "avg/day": g["y"].mean(), "model": m, "best_base": b,
+                     "winner": "model" if m < b else "BASELINE"})
+    pdish = pd.DataFrame(rows).sort_values("avg/day", ascending=False)
+    lines.append(pdish.to_string(index=False, formatters={
+        "avg/day": "{:.1f}".format, "model": lambda v: f"{v*100:.1f}%",
+        "best_base": lambda v: f"{v*100:.1f}%"}))
+    lines.append(f"Model wins on {(pdish['winner'] == 'model').sum()}/{len(pdish)} dishes.")
+
+    h = ds.groupby("horizon").apply(lambda g: metrics.wape(g["y"], g["yhat"]), include_groups=False)
+    lines.append("\n== MODEL WAPE BY HORIZON (days ahead) ==")
+    lines.append("  ".join(f"h{k}:{v*100:.1f}%" for k, v in h.items()))
+
+    if compare_censoring:
+        alt = _scored(run_backtest(dp, DISH_FEATURES, censor_mode="drop", n_folds=n_folds), calendar)
+        lines.append("\n== CENSORED-ROW HANDLING (dish WAPE / bias) ==")
+        for name, d in (("down-weight 0.3", ds), ("drop censored rows", alt)):
+            lines.append(f"  {name:<20} WAPE {metrics.wape(d['y'], d['yhat'])*100:.1f}%  "
+                         f"bias {metrics.bias(d['y'], d['yhat'])*100:+.1f}%")
+    return "\n".join(lines)
+
+
+def _fmt_pivot(piv: pd.DataFrame) -> str:
+    d = piv.copy()
+    for c in d.columns:
+        if c != "n":
+            d[c] = d[c].map(lambda v: f"{v * 100:.1f}%")
+    return d.to_string()

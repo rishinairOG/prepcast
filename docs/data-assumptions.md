@@ -71,7 +71,11 @@ Lifecycle: `grl_shrimp` and `mn_biryani` launch mid-period (2025-06-01, 2025-09-
 
 ## Noise & censoring (ASSUMPTION, chosen for realism rather than measured)
 
-- Daily counts: negative-binomial (`r=8`), overdispersed, non-negative, integer
+- Daily covers: negative-binomial, `r=60` (~14% day-to-day CV after known effects)
+- Dish counts: negative-binomial around covers x mix share, `r=20` (menu-mix noise on top of
+  count noise). An earlier draft used `r=8` for both; a check showed that even a perfect oracle
+  knowing the true expected covers would score 27% WAPE, which is far noisier than an
+  established restaurant, so it was tightened. The model is never tuned against this value.
 - Stockout censoring: ~2-3% of dish-days capped below latent demand, weighted toward
   weekends/Ramadan/events/Eid ("peak" days), capturing 50-90% of true demand when it happens
 - The true (uncensored) `latent_demand` is written to a separate file and is never used as a

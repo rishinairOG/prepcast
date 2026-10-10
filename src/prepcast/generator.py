@@ -94,7 +94,7 @@ def generate_covers(calendar_df: pd.DataFrame, cfg: PrepCastConfig = DEFAULT_CON
     mean_covers = cfg.restaurant.baseline_covers * multipliers
 
     # Overdispersed, non-negative integer noise via negative binomial.
-    r = cfg.noise.dispersion_r
+    r = cfg.noise.covers_r
     p = r / (r + mean_covers)
     p = np.clip(p, 1e-6, 1 - 1e-6)
     covers = rng.negative_binomial(r, p)
@@ -155,7 +155,7 @@ def generate_dish_sales(
         base_units = base_units * np.where(item.launch_date is not None, ramp, 1.0)
         base_units = np.where(active, base_units, 0.0)
 
-        r = cfg.noise.dispersion_r
+        r = cfg.noise.dish_r
         mean_u = np.clip(base_units, 1e-9, None)
         p = r / (r + mean_u)
         p = np.clip(p, 1e-6, 1 - 1e-6)
