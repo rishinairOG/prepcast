@@ -1,4 +1,4 @@
-"""Command-line interface: `prepcast generate | backtest`."""
+"""Command-line interface: `prepcast generate | backtest | simulate | export | run`."""
 from __future__ import annotations
 
 import argparse
@@ -6,7 +6,7 @@ import sys
 
 import pandas as pd
 
-from prepcast.config import DATA_DIR, DEFAULT_CONFIG
+from prepcast.config import DATA_DIR, DEFAULT_CONFIG, WEB_DATA_DIR
 from prepcast.generator import generate_all
 
 
@@ -51,6 +51,30 @@ def cmd_simulate(args: argparse.Namespace) -> None:
     print(savings_report(preds, latent, out_dir=DATA_DIR))
 
 
+def cmd_export(args: argparse.Namespace) -> None:
+    from prepcast.export import export_all
+
+    required = ["backtest_dishes.csv", "backtest_covers.csv", "sim_summary.csv",
+                "sim_prepcast_daily.csv"]
+    missing = [f for f in required if not (DATA_DIR / f).exists()]
+    if missing:
+        raise SystemExit(
+            f"Missing {missing} - run `prepcast backtest` and `prepcast simulate` first."
+        )
+    written = export_all(DATA_DIR, WEB_DATA_DIR)
+    print(f"Wrote {len(written)} JSON files to {WEB_DATA_DIR}:")
+    for name in written:
+        print(f"  {name}")
+
+
+def cmd_run(args: argparse.Namespace) -> None:
+    """Full pipeline from clean: generate -> backtest -> simulate -> export."""
+    cmd_generate(args)
+    cmd_backtest(args)
+    cmd_simulate(args)
+    cmd_export(args)
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="prepcast")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -65,6 +89,14 @@ def main(argv: list[str] | None = None) -> None:
 
     p_sim = sub.add_parser("simulate", help="Prep/waste simulation on the backtest weeks")
     p_sim.set_defaults(func=cmd_simulate)
+
+    p_exp = sub.add_parser("export", help="Write precomputed JSON for the static web demo")
+    p_exp.set_defaults(func=cmd_export)
+
+    p_run = sub.add_parser("run", help="Full pipeline: generate, backtest, simulate, export")
+    p_run.add_argument("--folds", type=int, default=52)
+    p_run.add_argument("--quick", action="store_true", help="skip the censoring comparison run")
+    p_run.set_defaults(func=cmd_run)
 
     args = parser.parse_args(argv)
     args.func(args)

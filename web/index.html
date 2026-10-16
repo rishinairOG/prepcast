@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PrepCast — demand &amp; prep forecasting demo</title>
+<meta name="description" content="PrepCast: a leakage-safe demand forecast and kitchen prep recommendation demo, built on synthetic Riyadh restaurant data.">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark">PrepCast</span>
+    <span class="brand-sub">demand &amp; prep forecasting demo</span>
+  </div>
+  <div class="topbar-actions">
+    <button id="theme-toggle" class="icon-btn" type="button" aria-label="Toggle dark/light theme" title="Toggle dark/light theme">🌓</button>
+  </div>
+</header>
+
+<nav class="tabs" role="tablist" aria-label="Demo sections">
+  <button class="tab-btn" role="tab" data-tab="forecast" aria-selected="true">📈 Forecast</button>
+  <button class="tab-btn" role="tab" data-tab="dishes" aria-selected="false">🍽️ Dishes</button>
+  <button class="tab-btn" role="tab" data-tab="prep" aria-selected="false">📋 Prep list</button>
+  <button class="tab-btn" role="tab" data-tab="savings" aria-selected="false">💰 Savings</button>
+</nav>
+
+<main id="app">
+
+  <!-- 1. FORECAST -->
+  <section id="panel-forecast" class="panel" role="tabpanel" aria-labelledby="tab-forecast">
+    <div class="panel-head">
+      <h2>Next 7 days — covers forecast</h2>
+      <p class="muted">Each scenario below is a <strong>real held-out week</strong> from the 52-fold
+        backtest: the model never trained on that week's own data, so what you see is forecast
+        vs what actually happened, not a simulation.</p>
+    </div>
+    <div class="scenario-toggle" id="scenario-toggle" role="group" aria-label="Scenario">
+      <button data-scenario="normal" class="scenario-btn active">Normal week</button>
+      <button data-scenario="ramadan" class="scenario-btn">Ramadan week</button>
+      <button data-scenario="event" class="scenario-btn">Event day</button>
+      <button data-scenario="eid" class="scenario-btn">Eid week</button>
+    </div>
+    <div class="chart-card">
+      <svg id="forecast-chart" viewBox="0 0 760 360" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Forecast vs actual covers chart"></svg>
+      <div class="legend">
+        <span class="legend-item"><span class="swatch swatch-band"></span>80% forecast band (P10–P90)</span>
+        <span class="legend-item"><span class="swatch swatch-forecast"></span>Forecast (P50)</span>
+        <span class="legend-item"><span class="swatch swatch-actual"></span>Actual</span>
+        <span class="legend-item"><span class="swatch swatch-baseline"></span>Last-week baseline</span>
+      </div>
+    </div>
+    <p class="muted small" id="scenario-caption"></p>
+  </section>
+
+  <!-- 2. DISHES -->
+  <section id="panel-dishes" class="panel hidden" role="tabpanel" aria-labelledby="tab-dishes">
+    <div class="panel-head">
+      <h2>Per-dish forecast &amp; recommended prep</h2>
+      <p class="muted">Tomorrow (<span id="dishes-date"></span>). Sort any column; filter by category.</p>
+    </div>
+    <div class="controls-row">
+      <label for="category-filter">Category</label>
+      <select id="category-filter">
+        <option value="all">All categories</option>
+      </select>
+    </div>
+    <div class="table-wrap">
+      <table id="dishes-table">
+        <thead>
+          <tr>
+            <th data-key="name">Dish</th>
+            <th data-key="category">Category</th>
+            <th data-key="forecast_p50" class="num">Forecast P50</th>
+            <th data-key="range" class="num">Range (P10–P90)</th>
+            <th data-key="recommended_prep" class="num">Recommended prep</th>
+            <th data-key="last_week_method" class="num">Last-week method</th>
+            <th data-key="diff_vs_last_week" class="num">Difference</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 3. PREP LIST -->
+  <section id="panel-prep" class="panel hidden" role="tabpanel" aria-labelledby="tab-prep">
+    <div class="panel-head no-print">
+      <h2>Tomorrow's prep list</h2>
+      <p class="muted">Grouped by kitchen station. Carryover is what's already usable from today;
+        prep is what PrepCast recommends making fresh.</p>
+    </div>
+    <div class="prep-actions no-print">
+      <button id="print-btn" class="primary-btn" type="button">🖨️ Print prep list</button>
+    </div>
+    <div id="prep-sheet">
+      <div class="print-header">
+        <h1>PrepCast — Kitchen Prep List</h1>
+        <p id="prep-sheet-date"></p>
+        <p class="print-badge">Synthetic demo data — not a real restaurant</p>
+      </div>
+      <div id="prep-stations"></div>
+    </div>
+  </section>
+
+  <!-- 4. SAVINGS -->
+  <section id="panel-savings" class="panel hidden" role="tabpanel" aria-labelledby="tab-savings">
+    <div class="panel-head">
+      <h2>Savings vs the usual method</h2>
+      <p class="muted">"Usual method" = last week's same day, plus a 10% buffer — the common
+        kitchen habit. Figures are simulated on the same 52 held-out weeks, replayed against the
+        same hidden true demand, annualised to a 52-week year.</p>
+    </div>
+
+    <div class="kpi-row" id="kpi-row"></div>
+
+    <div class="slider-card">
+      <h3>Buffer slider — waste ↔ stockout trade-off</h3>
+      <p class="muted small">This slider does not run any model in your browser — it looks up a
+        precomputed point from the simulation (P50 = always understock a bit, P95 = rarely run
+        out) and shows what that service level costs in waste and stockouts per year.</p>
+      <input type="range" id="buffer-slider" min="50" max="95" step="5" value="80">
+      <div class="slider-readout" id="slider-readout"></div>
+      <svg id="slider-chart" viewBox="0 0 760 240" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Waste vs stockout trade-off chart"></svg>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-footer">
+  <span class="badge">⚠ Synthetic data — this is a portfolio demo, not real restaurant data or a guaranteed client result.</span>
+  <span class="footer-credit">Built by Rishi V Nair · plain HTML/CSS/JS, no framework, no external requests.</span>
+</footer>
+
+<nav class="bottom-tabs" aria-hidden="true">
+  <button class="tab-btn" data-tab="forecast" aria-selected="true">📈<span>Forecast</span></button>
+  <button class="tab-btn" data-tab="dishes" aria-selected="false">🍽️<span>Dishes</span></button>
+  <button class="tab-btn" data-tab="prep" aria-selected="false">📋<span>Prep</span></button>
+  <button class="tab-btn" data-tab="savings" aria-selected="false">💰<span>Savings</span></button>
+</nav>
+
+<script src="app.js"></script>
+</body>
+</html>
